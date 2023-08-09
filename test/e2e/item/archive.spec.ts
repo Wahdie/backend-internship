@@ -1,5 +1,6 @@
 import request from "supertest";
 import { createApp } from "@src/app.js";
+import mongoose from "mongoose"; 
 
 describe("archive item", () => {
   let _id = "";
@@ -35,6 +36,7 @@ describe("archive item", () => {
     const response = await request(app).patch("/v1/items/" + _id + "/archive");
     expect(response.statusCode).toEqual(401);
     expect(response.body.message).toBe("Unauthorized Access");
+    expect(response.headers.location).toBe("/v1/auth/login");
   });
   it("should check user have permission to access", async () => {
     const app = await createApp();

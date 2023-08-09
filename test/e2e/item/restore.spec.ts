@@ -2,16 +2,23 @@ import request from "supertest";
 import { createApp } from "@src/app.js";
 
 describe("restore item", () => {
-  let _id = "";
-  beforeEach(async () => {
-    const app = await createApp();
-    // get access token for authorization request
-    const authResponse = await request(app).patch("/v1/auth/signin").send({
-      username: "admin",
-      password: "admin2024",
-    });
-    const accessToken = authResponse.body.accessToken;
-    // send request to create item
+  let app;
+  let adminAccessToken;
+  let createdItemId;
+
+  beforeAll(async () => {
+    app = await createApp();
+
+    // Authenticate admin user
+    const authResponse = await request(app)
+      .post("/v1/auth/signin")
+      .send({
+        username: "admin",
+        password: "admin2024",
+      });
+    adminAccessToken = authResponse.body.accessToken;
+
+    // Create an item for testing restore
     const data = {
       code: "A1",
       name: "item A",
@@ -26,52 +33,55 @@ describe("restore item", () => {
         },
       ],
     };
-    const response = await request(app).post("/v1/items").send(data).set("Authorization", `Bearer ${accessToken}`);
-    _id = response.body._id;
+    const createResponse = await request(app)
+      .post("/v1/items")
+      .send(data)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+    createdItemId = createResponse.body._id;
+
+    // Archive the item for testing restore
+    await request(app)
+      .patch(`/v1/items/${createdItemId}/archive`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
   });
+
   it("should check user is authorized", async () => {
-    const app = await createApp();
-    // send request to create item
-    const response = await request(app).patch("/v1/items/" + _id + "/restore");
+    const response = await request(app)
+      .patch(`/v1/items/${createdItemId}/restore`);
     expect(response.statusCode).toEqual(401);
     expect(response.body.message).toBe("Unauthorized Access");
   });
+
   it("should check user have permission to access", async () => {
-    const app = await createApp();
-    // get access token for authorization request
-    const authResponse = await request(app).post("/v1/auth/signin").send({
-      username: "user",
-      password: "user2024",
-    });
+    // Authenticate regular user
+    const authResponse = await request(app)
+      .post("/v1/auth/signin")
+      .send({
+        username: "user",
+        password: "user2024",
+      });
     const accessToken = authResponse.body.accessToken;
-    // send request to read item
+
     const response = await request(app)
-      .patch("/v1/items/" + _id + "/restore")
+      .patch(`/v1/items/${createdItemId}/restore`)
       .set("Authorization", `Bearer ${accessToken}`);
 
     expect(response.statusCode).toEqual(403);
     expect(response.body.message).toBe("Forbidden Access");
   });
-  it("should delete data from database", async () => {
-    const app = await createApp();
-    // get access token for authorization request
-    const authResponse = await request(app).post("/v1/auth/signin").send({
-      username: "admin",
-      password: "admin2024",
-    });
-    const accessToken = authResponse.body.accessToken;
-    const responseDelete = await request(app)
-      .patch("/v1/items/" + _id + "/restore")
-      .set("Authorization", `Bearer ${accessToken}`);
-    // expected response status
-    expect(responseDelete.statusCode).toEqual(204);
 
+  it("should restore data in database", async () => {
     const response = await request(app)
-      .get("/v1/items/" + _id)
-      .set("Authorization", `Bearer ${accessToken}`);
-    // expected response status
-    expect(response.statusCode).toEqual(200);
-    // expected response body
-    expect(response.body.isArchived).toBe(false);
+      .patch(`/v1/items/${createdItemId}/restore`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+
+    expect(response.statusCode).toEqual(204);
+
+    const getItemResponse = await request(app)
+      .get(`/v1/items/${createdItemId}`)
+      .set("Authorization", `Bearer ${adminAccessToken}`);
+    
+    expect(getItemResponse.statusCode).toEqual(200);
+    expect(getItemResponse.body.isArchived).toBe(false);
   });
 });
